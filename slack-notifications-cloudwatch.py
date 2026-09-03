@@ -1,8 +1,20 @@
-import urllib3
-import json
+"""Post CloudWatch alarm state changes to Slack.
 
-# Slack incoming URL (replace with yours)
-slack_url = "https://hooks.slack.com/services/XXXXXXXXX/XXXXXXXXXXX/XXXXXXXXXXXXXXXXXXXXXXXX"
+Deploy as an AWS Lambda function subscribed to the SNS topic your CloudWatch
+alarms notify. The Slack incoming webhook URL is read from the SLACK_WEBHOOK_URL
+environment variable, so the secret lives in the function configuration (or
+Secrets Manager) instead of in this file.
+
+Runtime: Python 3.12+. urllib3 ships with the Lambda Python runtime, so the
+function needs no dependency layer.
+"""
+
+import json
+import os
+
+import urllib3
+
+SLACK_URL = os.environ["SLACK_WEBHOOK_URL"]
 http = urllib3.PoolManager()
 
 def get_alarm_attributes(sns_message):
@@ -12,7 +24,8 @@ def get_alarm_attributes(sns_message):
     alarm['description'] = sns_message['AlarmDescription']
     alarm['reason'] = sns_message['NewStateReason']
     alarm['region'] = sns_message['Region']
-    alarm['instance_id'] = sns_message['Trigger']['Dimensions'][0]['value']
+    dimensions = sns_message.get('Trigger', {}).get('Dimensions') or []
+    alarm['instance_id'] = dimensions[0]['value'] if dimensions else 'n/a'
     alarm['state'] = sns_message['NewStateValue']
     alarm['previous_state'] = sns_message['OldStateValue']
 
@@ -130,24 +143,37 @@ def resolve_alarm(alarm):
     }
 
 def lambda_handler(event, context):
+    """Turn one SNS record into one Slack message."""
     sns_message = json.loads(event["Records"][0]["Sns"]["Message"])
     alarm = get_alarm_attributes(sns_message)
 
-    msg = str()
-
-    if alarm['previous_state'] == "INSUFFICIENT_DATA" and alarm['state'] == 'OK':
+    transition = (alarm["previous_state"], alarm["state"])
+    if transition == ("INSUFFICIENT_DATA", "OK"):
         msg = register_alarm(alarm)
-    elif alarm['previous_state'] == 'OK' and alarm['state'] == 'ALARM':
+    elif transition == ("OK", "ALARM"):
         msg = activate_alarm(alarm)
-    elif alarm['previous_state'] == 'ALARM' and alarm['state'] == 'OK':
+    elif transition == ("ALARM", "OK"):
         msg = resolve_alarm(alarm)
+    else:
+        # Every other transition (ALARM to INSUFFICIENT_DATA when an instance
+        # goes away, or a repeated notification for the same state) carries no
+        # news for a chat channel. The old version posted an empty message here.
+        print({"skipped": transition, "alarm": alarm["name"]})
+        return {"statusCode": 200, "skipped": f"{transition[0]} -> {transition[1]}"}
 
-    encoded_msg = json.dumps(msg).encode("utf-8")
-    resp = http.request("POST", slack_url, body=encoded_msg)
-    print(
-        {
-            "message": msg,
-            "status_code": resp.status,
-            "response": resp.data,
-        }
+    response = http.request(
+        "POST",
+        SLACK_URL,
+        body=json.dumps(msg).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        retries=urllib3.Retry(total=3, backoff_factor=0.5, status_forcelist=[429, 500, 502, 503, 504]),
     )
+
+    # Slack answers 200 with the body "ok". Anything else is a failure worth a
+    # Lambda error metric: a silent 403 from a rotated webhook is how alerting
+    # dies without anyone noticing.
+    if response.status != 200:
+        raise RuntimeError(f"Slack rejected the message: {response.status} {response.data.decode('utf-8', 'replace')}")
+
+    print({"alarm": alarm["name"], "transition": transition, "status_code": response.status})
+    return {"statusCode": response.status}

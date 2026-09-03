@@ -1,0 +1,54 @@
+name: Script Verification
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly: catches a lint rule or runtime change before a user does.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: verification-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint and exercise the handler
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.13"
+
+      - name: Install lint and test tooling
+        run: pip install ruff urllib3
+
+      - name: Ruff
+        run: ruff check --select E,F,W --ignore E501 slack-notifications-cloudwatch.py
+
+      - name: Exercise the handler against a recorded SNS event
+        env:
+          SLACK_WEBHOOK_URL: https://hooks.slack.example/not-called
+        run: python tests/test_handler.py
+
+  actionlint:
+    name: Lint workflow YAML
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/mnt" -w /mnt rhysd/actionlint:1.7.12 -color
