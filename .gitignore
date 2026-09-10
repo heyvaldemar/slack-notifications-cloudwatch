@@ -1,0 +1,3 @@
+# Python bytecode: it is build output, and it is not the source anyone reviews.
+__pycache__/
+*.py[cod]
