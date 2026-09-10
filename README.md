@@ -31,6 +31,17 @@ Fire a test alarm, or publish a recorded event to the topic. Slack shows a messa
 
 The function raises when Slack rejects a message, which surfaces as the Lambda `Errors` metric. Put a CloudWatch alarm on that metric, notifying a different channel or an email address. An alerting path that cannot report its own failure is a single point of silence.
 
+## Security notes
+
+- **Pre-rotation advisory.** A Slack incoming webhook URL was committed to this
+  repository in March 2024 and removed from the working tree afterwards. It is
+  still in the git history of a public repository, which means it has to be
+  treated as public: **revoke that webhook in the Slack workspace** if it has
+  not been already, and create a new one. Scrubbing the history would not
+  change that — a URL that was public for a day is public.
+- The webhook belongs in the function's environment, never in the source. The
+  code reads it from the environment and fails loudly if it is unset.
+
 ## Testing
 
 `tests/test_handler.py` exercises the handler against recorded SNS events with the HTTP layer stubbed: each alarm transition, the skip path, a composite alarm that carries no dimensions, and a Slack rejection. The [Script Verification](https://github.com/heyvaldemar/slack-notifications-cloudwatch/actions/workflows/verification.yml?query=branch%3Amain) workflow runs Ruff and those tests on every push, pull request, and weekly.
