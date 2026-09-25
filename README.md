@@ -1,6 +1,7 @@
 # CloudWatch alarms in Slack
 
 [![Script Verification](https://github.com/heyvaldemar/slack-notifications-cloudwatch/actions/workflows/verification.yml/badge.svg?branch=main)](https://github.com/heyvaldemar/slack-notifications-cloudwatch/actions/workflows/verification.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14903/badge)](https://www.bestpractices.dev/projects/14903)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An AWS Lambda function that turns CloudWatch alarm state changes into readable Slack messages: a red header when an alarm fires, a green one when it clears, with the reason, the region and the instance in Block Kit blocks rather than a wall of JSON.
