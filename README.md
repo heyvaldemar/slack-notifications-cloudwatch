@@ -40,6 +40,9 @@ The function raises when Slack rejects a message, which surfaces as the Lambda `
   treated as public: **revoke that webhook in the Slack workspace** if it has
   not been already, and create a new one. Scrubbing the history would not
   change that — a URL that was public for a day is public.
+  Checked on 30 October 2026 with an empty payload, so nothing was posted:
+  Slack answers `404 no_team`. The workspace it belonged to no longer exists,
+  and the URL works nowhere.
 - The webhook belongs in the function's environment, never in the source. The
   code reads it from the environment and fails loudly if it is unset.
 
